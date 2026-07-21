@@ -1,0 +1,1 @@
+import { PrismaClient } from '@prisma/client'; const prisma = new PrismaClient(); async function main() { const ta = await prisma.teacherAssignment.findMany(); console.log('Teacher Assignments Count:', ta.length); if (ta.length > 0) console.log(ta.slice(0,2)); } main().catch(console.error).finally(() => prisma.$disconnect());

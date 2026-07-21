@@ -1,0 +1,306 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String
+  domain    String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users      User[]
+  classrooms Classroom[]
+  subjects   Subject[]
+  exams      Exam[]
+  notices    Notice[]
+  complaints Complaint[]
+  homeworks  Homework[]
+}
+
+enum Role {
+  ADMIN
+  COORDINATOR
+  JUNIOR_COORDINATOR
+  TEACHER
+  STUDENT
+  PARENT
+}
+
+model User {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId  String   @db.ObjectId
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  
+  email     String?
+  phone     String?
+  password  String?  // Hashed password for local auth
+  role      Role     @default(STUDENT)
+  
+  firstName String
+  lastName  String
+  imageUrl  String?
+  
+  // Extended Student Profile Fields
+  fatherName String?
+  fatherOccupation String?
+  motherName String?
+  motherOccupation String?
+  fatherMobile String?
+  motherMobile String?
+  guardianName String?
+  guardianOccupation String?
+  guardianMobile String?
+  previousPerformance String?
+  previousSchoolName String?
+  isNewAdmission Boolean? @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  roleProfile RoleProfile?
+  teacherAssignments TeacherAssignment[]
+  classTimetables ClassTimetable[] @relation("TimetableTeacher")
+  attendances Attendance[]
+  grades Grade[]
+  
+  complaintsReceived Complaint[] @relation("StudentComplaints")
+  complaintsReported Complaint[] @relation("ReportedComplaints")
+
+  studentClassroomId String? @db.ObjectId
+  studentClassroom   Classroom? @relation("StudentClassroom", fields: [studentClassroomId], references: [id])
+
+  homeworksAssigned Homework[] @relation("TeacherHomework")
+  homeworkSubmissions HomeworkSubmission[] @relation("StudentHomework")
+
+  @@unique([tenantId, email])
+  @@unique([tenantId, phone])
+}
+
+model RoleProfile {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String   @unique @db.ObjectId
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // JSON field for dynamic role-specific data (e.g. subjects taught, child IDs for parents)
+  metadata  String?  
+}
+
+model Classroom {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId  String   @db.ObjectId
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  
+  name      String   // e.g., "10-A"
+  grade     String   // e.g., "10"
+  section   String   // e.g., "A"
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  students User[] @relation("StudentClassroom")
+  teacherAssignments TeacherAssignment[]
+  classTimetables ClassTimetable[]
+  attendances Attendance[]
+  exams       Exam[]
+  homeworks   Homework[]
+}
+
+model Subject {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId  String   @db.ObjectId
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  
+  name      String
+  code      String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teacherAssignments TeacherAssignment[]
+  classTimetables ClassTimetable[]
+  examPapers ExamPaper[]
+  homeworks  Homework[]
+}
+
+model TeacherAssignment {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  teacherId   String   @db.ObjectId
+  teacher     User     @relation(fields: [teacherId], references: [id])
+  classroomId String   @db.ObjectId
+  classroom   Classroom @relation(fields: [classroomId], references: [id])
+  subjectId   String?  @db.ObjectId
+  subject     Subject? @relation(fields: [subjectId], references: [id])
+
+  isClassTeacher Boolean @default(false)
+}
+
+model ClassTimetable {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  classroomId String   @db.ObjectId
+  classroom   Classroom @relation(fields: [classroomId], references: [id])
+  subjectId   String   @db.ObjectId
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+  
+  teacherId   String?  @db.ObjectId
+  teacher     User?    @relation("TimetableTeacher", fields: [teacherId], references: [id])
+  
+  dayOfWeek   Int      // 1 = Monday, 2 = Tuesday, etc.
+  startTime   String   // e.g., "09:00"
+  endTime     String   // e.g., "10:00"
+}
+
+model Attendance {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  studentId   String   @db.ObjectId
+  student     User     @relation(fields: [studentId], references: [id])
+  classroomId String   @db.ObjectId
+  classroom   Classroom @relation(fields: [classroomId], references: [id])
+  
+  date        DateTime
+  status      String   // "PRESENT", "ABSENT", "LATE"
+  
+  @@unique([studentId, date])
+}
+
+model Exam {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId    String   @db.ObjectId
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  
+  name        String
+  startDate   DateTime
+  endDate     DateTime
+  
+  classroomId String?  @db.ObjectId
+  classroom   Classroom? @relation(fields: [classroomId], references: [id])
+  
+  timetableUrl  String?
+  timetableType String?
+
+  examPapers  ExamPaper[]
+}
+
+model ExamPaper {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  examId      String   @db.ObjectId
+  exam        Exam     @relation(fields: [examId], references: [id])
+  subjectId   String   @db.ObjectId
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+  
+  maxMarks    Int
+  passingMarks Int
+  date        DateTime
+  
+  evaluations EvaluationWorkflow[]
+  grades      Grade[]
+}
+
+model EvaluationWorkflow {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  examPaperId String   @db.ObjectId
+  examPaper   ExamPaper @relation(fields: [examPaperId], references: [id])
+  
+  assignedTeacherId String @db.ObjectId
+  status      String   // "PENDING", "EVALUATED", "VERIFIED", "PUBLISHED"
+  coordinatorRemarks String?
+}
+
+model Grade {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  studentId   String   @db.ObjectId
+  student     User     @relation(fields: [studentId], references: [id])
+  examPaperId String   @db.ObjectId
+  examPaper   ExamPaper @relation(fields: [examPaperId], references: [id])
+  
+  marksObtained Float
+  teacherRemarks String?
+  coordinatorRemarks String?
+  copyUrl      String?
+  isVerified   Boolean @default(false)
+  
+  @@unique([studentId, examPaperId])
+}
+
+model Notice {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId  String   @db.ObjectId
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  
+  title     String
+  content   String
+  fileUrl   String?
+  fileType  String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Complaint {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId    String   @db.ObjectId
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  
+  title       String
+  description String
+  status      String   @default("OPEN") // OPEN, IN_PROGRESS, RESOLVED
+  
+  studentId   String   @db.ObjectId
+  student     User     @relation("StudentComplaints", fields: [studentId], references: [id])
+  
+  reportedById String  @db.ObjectId
+  reportedBy   User    @relation("ReportedComplaints", fields: [reportedById], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Homework {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  tenantId    String   @db.ObjectId
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  
+  title       String
+  description String
+  dueDate     DateTime
+  
+  classroomId String   @db.ObjectId
+  classroom   Classroom @relation(fields: [classroomId], references: [id])
+  
+  subjectId   String   @db.ObjectId
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+  
+  teacherId   String   @db.ObjectId
+  teacher     User     @relation("TeacherHomework", fields: [teacherId], references: [id])
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  submissions HomeworkSubmission[]
+}
+
+model HomeworkSubmission {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  homeworkId  String   @db.ObjectId
+  homework    Homework @relation(fields: [homeworkId], references: [id])
+  
+  studentId   String   @db.ObjectId
+  student     User     @relation("StudentHomework", fields: [studentId], references: [id])
+  
+  status      String   @default("PENDING") // PENDING, SUBMITTED_ON_TIME, LATE_SUBMISSION, NOT_SUBMITTED
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([homeworkId, studentId])
+}
